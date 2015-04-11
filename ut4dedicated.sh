@@ -1,7 +1,7 @@
 #!/bin/bash
 # Script Variables 
 USER="CHANGE"
-DIRECTORY=/opt/ut4/test/server
+DIRECTORY=/opt/ut4/update
 TYPE="install"
 LINK="none"
 FILE="none"
@@ -39,7 +39,17 @@ if [[ "$CLINK" == false ]]; then
       CLINK=true
   fi
 fi
-FILENAME=$(basename FILE)
+FILENAME=$(basename $LINK)
+
+# Check TYPE
+if [[ $TYPE == "install" ]]; then
+  echo "*** Instalation of Unreal Tournament 4 Dedicated Server ***"
+elif [[ $TYPE == "update" ]]; then
+  echo "*** Update of Unreal Tournament 4 Dedicated Server ***"
+else
+  echo "Unknown type [ install / update ]"
+  exit 1
+fi
 
 # Check User Exist 
 ## Check user
@@ -82,16 +92,35 @@ then
     exit 1
 fi
 
-
 # Actions 
 ## Download
 if [[ "$LINK" != "none" ]]; then
   $VARROOT wget -P $DIRECTORY $LINK
 fi
 
+## If update then delete directory and kill proc
+if [[ "$TYPE" == "update" ]]; then 
+  echo "Pausing the cron during update..."
+  $VARROOT touch $DIRECTORY/cron.save
+  $VARROOT crontab -l > $DIRECTORY/cron.save 
+  $VARROOT crontab -r
+
+  echo "Killing process..."
+  $VARROOT pidof UE4Server > /dev/null
+  $VARROOT kill $?
+
+  echo "Removing directory..."
+  $VARROOT rm -R $DIRECTORY/LinuxServer
+fi
+
 ## Unzipping
 echo 'Unzipping archive...'
-$VARROOT unzip -q $FILE -d $DIRECTORY
+if [[ "$LINK" != "none" ]]; then
+  $VARROOT unzip -q $DIRECTORY/$FILENAME -d $DIRECTORY
+else
+  $VARROOT unzip -q $FILE -d $DIRECTORY
+fi
+
 
 ## Right 1
 echo 'Settings rights...'
@@ -128,6 +157,10 @@ if [[ "$TYPE" == "install" ]]; then
   printf "*/1 * * * * bash %s > /dev/null \n" "$DIRECTORY/launch.sh" >> $DIRECTORY/cron
   $VARROOT crontab $DIRECTORY/cron
   $VARROOT rm $DIRECTORY/cron
+elif [[ "$TYPE" == "update" ]]; then
+  echo "Reactive the cron..."
+  $VARROOT crontab $DIRECTORY/cron.save
+  $VARROOT rm $DIRECTORY/cron.save
 fi
 
 # Remove Engine and Game to set Symbolinks Links
