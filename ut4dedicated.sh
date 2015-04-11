@@ -1,35 +1,67 @@
 #!/bin/bash
-# Server Variables 
-USER=CHANGE
-DIRECTORY=/opt/ut4/server
-PORT=7777
-SERVERNAME='Unreal Test Script'
-MOTD='MOTD'
-GAMETYPE="Duel"
-MAP="DM-DeckTest"
-LINK="CHANGE"
+# Script Variables 
+USER="CHANGE"
+DIRECTORY=/opt/ut4/update
+TYPE="install"
+LINK="none"
+FILE="none"
 
-# Script Variables
+# Server Variables
+SERVERNAME="Unreal Server"
+MOTD="Welcome"
+PORT=7777
+MAP="DM-DeckTest"
+GAMETYPE="Duel"
+
+# Don't change
 EXEDIRECTORY=$DIRECTORY/LinuxServer/Engine/Binaries/Linux
 CONDIRECTORY=$DIRECTORY/LinuxServer/UnrealTournament/Saved/Config/LinuxServer
 
-# Check the link 
-if [ "$LINK" == "CHANGE" ];
-then
-  echo 'You must insert the download link'
+# Check Variables
+## FILE & LINK
+CLINK=false
+if [[ "$FILE" != "none" ]]; then
+  # Check if the file is correct
+  if [[ -f $FILE  ]]; then
+    CLINK=true
+  else
+    echo "The FILE you entered is invalid"
+  fi
+fi
+
+if [[ "$CLINK" == false ]]; then
+  # Check if LINK is different
+  if [[ "$LINK" == "none" ]]; then
+    echo "You must change the variable LINK"
+      exit 1
+    else
+      # Checking Link ( soon )
+      CLINK=true
+  fi
+fi
+FILENAME=$(basename $LINK)
+
+# Check TYPE
+if [[ $TYPE == "install" ]]; then
+  echo "*** Instalation of Unreal Tournament 4 Dedicated Server ***"
+elif [[ $TYPE == "update" ]]; then
+  echo "*** Update of Unreal Tournament 4 Dedicated Server ***"
+else
+  echo "Unknown type [ install / update ]"
   exit 1
 fi
 
-# Check the user 
-if [ "$USER" == "CHANGE" ];
+# Check User Exist 
+## Check user
+id $USER > /dev/null 2> /dev/null
+
+if [ $? -eq 1 ];
 then
-  echo 'You must change the user'
-  exit 1
+    echo "User not exist"
+    exit 1
 fi
 
-FILE=${LINK##*/}
-
-# root ?
+## Check isroot ?
 if [ "$UID" -ne "0" ];
 then
   VARROOT=""
@@ -37,28 +69,22 @@ else
   VARROOT="sudo -u $USER"
 fi
 
-# Check user
-id $USER 2>/dev/null
-if [ $? -eq 1 ];
-then
-    echo "User not exist"
-    exit 1
-fi
-
-# Check directory
+# Check Directory Exist
 if [ ! -d $DIRECTORY ]; 
 then
   echo "Directory not exist"
   exit 1
 fi
 
-# Check if user got correct access
-if ! /bin/sh -c "test -w '$DIRECTORY'" ; then 
-  echo 'Forbidden.'
+# Check if user got correct right on the Directory
+$VARROOT test -w $DIRECTORY
+
+if [[ $? == "1" ]]; then 
+  echo 'User cant write into the directory.'
   exit 1
 fi
 
-# Check if unzip is installed
+# Check unzip installed
 if [ $(which unzip | wc -l) -eq 0 ]; 
 then
     echo "Installer le paquet 'unzip'."
@@ -66,50 +92,88 @@ then
     exit 1
 fi
 
-# Download
-$VARROOT wget -P $DIRECTORY $LINK
-echo 'Unzipping archive.'
-$VARROOT unzip -q $DIRECTORY/$FILE -d $DIRECTORY
-echo 'Settings rights'
+# Actions 
+## Download
+if [[ "$LINK" != "none" ]]; then
+  $VARROOT wget -P $DIRECTORY $LINK
+fi
+
+## If update then delete directory and kill proc
+if [[ "$TYPE" == "update" ]]; then 
+  echo "Pausing the cron during update..."
+  $VARROOT touch $DIRECTORY/cron.save
+  $VARROOT crontab -l > $DIRECTORY/cron.save 
+  $VARROOT crontab -r
+
+  echo "Killing process..."
+  $VARROOT pidof UE4Server > /dev/null
+  $VARROOT kill $?
+
+  echo "Removing directory..."
+  $VARROOT rm -R $DIRECTORY/LinuxServer
+fi
+
+## Unzipping
+echo 'Unzipping archive...'
+if [[ "$LINK" != "none" ]]; then
+  $VARROOT unzip -q $DIRECTORY/$FILENAME -d $DIRECTORY
+else
+  $VARROOT unzip -q $FILE -d $DIRECTORY
+fi
+
+
+## Right 1
+echo 'Settings rights...'
 $VARROOT chmod +x $EXEDIRECTORY/UE4Server
 
-# First Launch that will crash 
+## First Launch that will crash 
 echo 'First Launch'
 $VARROOT $EXEDIRECTORY/UE4Server UnrealTournament DM-DeckTest -log > /dev/null
 echo 'First launch finish'
 
-# Creation of config's files
-$VARROOT mkdir $DIRECTORY/Configs
+if [[ "$TYPE" == "install" ]]; then
+  echo "Creation of configs files"
+  # Creation of config's files
+  $VARROOT mkdir $DIRECTORY/Configs
+  $VARROOT touch $DIRECTORY/Configs/Engine.ini
+  $VARROOT touch $DIRECTORY/Configs/Game.ini
+  $VARROOT touch $DIRECTORY/launch.sh
+  $VARROOT touch $DIRECTORY/reboot.sh
+
+  # Engine.ini
+  printf "[/Script/UnrealTournament.UTGameEngine]\n bFirstRun = False\n" >> $DIRECTORY/Configs/Engine.ini
+
+  # Game.ini
+  printf "[/Script/UnrealTournament.UTGameState]\n" >> $DIRECTORY/Configs/Game.ini
+  printf "ServerName=%s\n" "$SERVERNAME" >> $DIRECTORY/Configs/Game.ini
+  printf "ServerMOTD=%s\n" "$MOTD" >> $DIRECTORY/Configs/Game.ini
+
+  # Creation of the launch script 
+  printf "#!/bin/bash\nps -eaf | grep UE4Server | grep %s\nif [ \$? -eq 1 ]\nthen\n%s\n else\necho 'The Server is already running on port %s!'\nfi\n" "$PORT" "$EXEDIRECTORY/UE4Server UnrealTournament $MAP?Game=$GAMETYPE?MustBeReady=1 -port=$PORT" "$PORT" >> $DIRECTORY/launch.sh
+
+  # Creation of the reboot script
+  printf "#!/bin/bash\npid=\$(pidof UE4Server)\nkill \$pid" >> $DIRECTORY/reboot.sh
+
+  # Creation of the CRONTAB File
+  echo "Creation of CRON"
+  $VARROOT touch $DIRECTORY/cron
+  $VARROOT crontab -l > $DIRECTORY/cron
+  printf "*/1 * * * * bash %s > /dev/null \n" "$DIRECTORY/launch.sh" >> $DIRECTORY/cron
+  $VARROOT crontab $DIRECTORY/cron
+  $VARROOT rm $DIRECTORY/cron
+elif [[ "$TYPE" == "update" ]]; then
+  echo "Reactive the cron..."
+  $VARROOT crontab $DIRECTORY/cron.save
+  $VARROOT rm $DIRECTORY/cron.save
+fi
 
 # Remove Engine and Game to set Symbolinks Links
 $VARROOT rm $CONDIRECTORY/Engine.ini
 $VARROOT rm $CONDIRECTORY/Game.ini
 
-# Create files
-$VARROOT touch $DIRECTORY/Configs/Engine.ini
-$VARROOT touch $DIRECTORY/Configs/Game.ini
-$VARROOT touch $DIRECTORY/launch.sh
-
-# Engine.ini
-printf "[/Script/UnrealTournament.UTGameEngine]\n bFirstRun = False\n" >> $DIRECTORY/Configs/Engine.ini
-
-# Game.ini
-printf "[/Script/UnrealTournament.UTGameState]\n" >> $DIRECTORY/Configs/Game.ini
-printf "ServerName=%s\n" "$SERVERNAME" >> $DIRECTORY/Configs/Game.ini
-printf "ServerMOTD=%s\n" "$MOTD" >> $DIRECTORY/Configs/Game.ini
-
 # Creating symbolinks links 
 $VARROOT ln -s $DIRECTORY/Configs/Engine.ini $CONDIRECTORY/Engine.ini
 $VARROOT ln -s $DIRECTORY/Configs/Game.ini $CONDIRECTORY/Game.ini
-
-# Creation of the launch script 
-printf "#!/bin/bash\nps -eaf | grep UE4Server | grep %s\nif [ \$? -eq 1 ]\nthen\n%s\n else\necho 'The Duel Server is already running on port %s!'\nfi\n" "$PORT" "$EXEDIRECTORY/UE4Server UnrealTournament $MAP?Game=$GAMETYPE?MustBeReady=1 -port=$PORT" "$PORT" >> $DIRECTORY/launch.sh
-
-# Creation of the CRONTAB File
-$VARROOT crontab -l > $DIRECTORY/cron
-printf "*/1 * * * * bash %s > /dev/null" "$DIRECTORY/launch.sh" >> $DIRECTORY/cron
-$VARROOT crontab $DIRECTORY/cron
-$VARROOT rm $DIRECTORY/cron
 
 echo 'Done.'
 exit 0
