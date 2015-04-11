@@ -138,6 +138,7 @@ if [[ "$TYPE" == "install" ]]; then
   $VARROOT touch $DIRECTORY/Configs/Engine.ini
   $VARROOT touch $DIRECTORY/Configs/Game.ini
   $VARROOT touch $DIRECTORY/launch.sh
+  $VARROOT touch $DIRECTORY/reboot.sh
 
   # Engine.ini
   printf "[/Script/UnrealTournament.UTGameEngine]\n bFirstRun = False\n" >> $DIRECTORY/Configs/Engine.ini
@@ -149,6 +150,9 @@ if [[ "$TYPE" == "install" ]]; then
 
   # Creation of the launch script 
   printf "#!/bin/bash\nps -eaf | grep UE4Server | grep %s\nif [ \$? -eq 1 ]\nthen\n%s\n else\necho 'The Server is already running on port %s!'\nfi\n" "$PORT" "$EXEDIRECTORY/UE4Server UnrealTournament $MAP?Game=$GAMETYPE?MustBeReady=1 -port=$PORT" "$PORT" >> $DIRECTORY/launch.sh
+
+  # Creation of the reboot script
+  printf "#!/bin/bash\npid=\$(pidof UE4Server)\nkill \$pid" >> $DIRECTORY/reboot.sh
 
   # Creation of the CRONTAB File
   echo "Creation of CRON"
