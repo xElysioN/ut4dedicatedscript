@@ -3,6 +3,7 @@ This script allow you to install simply an Unreal Tournament Dedicated Server
 
 ## Requirements
 - Debian Wheezy x64
+- Ubuntu Server 14.04
 ( Others system are in test ) 
 
 ## Installation
@@ -28,7 +29,7 @@ This script allow you to install simply an Unreal Tournament Dedicated Server
  - TYPE : update
  - LINK or FILE ( like installation )
 
- ## Reboot the server
+## Reboot the server
  - Go to your server directory and launch bash reboot.sh
 
 ## Contact
